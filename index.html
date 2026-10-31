@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com http://localhost:* http://127.0.0.1:*; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151412" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Trip Board">
+  <title>Trip Board</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <h1 id="boardTitle">Trip Board</h1>
+        <p id="countdown" class="countdown"></p>
+      </div>
+      <div class="top-actions">
+        <div class="seg" id="whoFilter" role="radiogroup" aria-label="Show tasks for">
+          <button type="button" role="radio" data-who="all">All</button>
+          <button type="button" role="radio" data-who="p1">Person 1</button>
+          <button type="button" role="radio" data-who="p2">Person 2</button>
+        </div>
+        <button type="button" id="syncBtn" class="sync" title="Sync & settings">
+          <span class="sync-dot" aria-hidden="true"></span><span id="syncText">…</span>
+        </button>
+        <button type="button" id="addBtn" class="btn primary"><span aria-hidden="true">+</span> Add</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="View">
+      <button type="button" role="tab" data-tab="list">Checklist</button>
+      <button type="button" role="tab" data-tab="sched">Schedule <span id="tabBadge" class="badge warn" hidden></span></button>
+    </nav>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main class="layout" id="layout">
+    <section class="pane list-pane" id="listPane" aria-label="Checklist"></section>
+    <section class="pane sched-pane" id="schedPane" aria-label="Schedule"></section>
+  </main>
+
+  <section id="welcome" class="welcome" hidden></section>
+
+  <!-- Item editor -->
+  <dialog id="itemDlg" class="sheet" aria-labelledby="itemDlgTitle">
+    <form method="dialog" id="itemForm" class="sheet-body" autocomplete="off">
+      <header class="sheet-head">
+        <h2 id="itemDlgTitle">Edit</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="sheet-scroll">
+        <label class="field">
+          <span>What</span>
+          <input name="title" required maxlength="200" placeholder="e.g. Book hotel">
+        </label>
+        <div class="field">
+          <span>Who</span>
+          <div class="seg seg-wide" data-radio="owner">
+            <button type="button" data-val="p1">Person 1</button>
+            <button type="button" data-val="p2">Person 2</button>
+            <button type="button" data-val="both">Both</button>
+          </div>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>Type</span>
+            <select name="kind">
+              <option value="task">Task</option>
+              <option value="meet">Plan / meeting</option>
+              <option value="travel">Travel</option>
+              <option value="stay">Stay (where you sleep)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>List</span>
+            <select name="section"></select>
+          </label>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>Date</span>
+            <span class="with-clear">
+              <input type="date" name="date">
+              <button type="button" class="clear-btn" data-clear="date" aria-label="Clear date">✕</button>
+            </span>
+          </label>
+          <label class="field">
+            <span>Until <small>(multi-day)</small></span>
+            <span class="with-clear">
+              <input type="date" name="endDate">
+              <button type="button" class="clear-btn" data-clear="endDate" aria-label="Clear end date">✕</button>
+            </span>
+          </label>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>Time</span>
+            <span class="with-clear">
+              <input type="time" name="time">
+              <button type="button" class="clear-btn" data-clear="time" aria-label="Clear time">✕</button>
+            </span>
+          </label>
+          <label class="field">
+            <span>Time note</span>
+            <input name="when" maxlength="80" placeholder="leave home, after lunch…">
+          </label>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>Place</span>
+            <input name="place" maxlength="120" placeholder="e.g. station or address">
+          </label>
+          <label class="field">
+            <span>Priority</span>
+            <select name="priority">
+              <option value="">—</option>
+              <option>P0</option><option>P1</option><option>P2</option><option>P3</option>
+              <option>P4</option><option>P5</option><option>P6</option><option>P7</option>
+            </select>
+          </label>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="tbc"> <span><b>Needs scheduling</b><small>date or time not fixed yet</small></span></label>
+          <label class="check"><input type="checkbox" name="pencil"> <span><b>Pencilled in</b><small>flexible — can move</small></span></label>
+          <label class="check"><input type="checkbox" name="done"> <span><b>Done</b></span></label>
+        </div>
+        <label class="field">
+          <span>Link</span>
+          <input type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" name="link" maxlength="500" placeholder="https://…">
+        </label>
+        <label class="field">
+          <span>Notes</span>
+          <textarea name="notes" rows="3" maxlength="2000"></textarea>
+        </label>
+        <p class="meta-line" id="itemMeta"></p>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger ghost" id="itemDelete">Delete</button>
+        <span class="move-btns" id="itemMove">
+          <button type="button" class="icon-btn" data-move="-1" aria-label="Move up">↑</button>
+          <button type="button" class="icon-btn" data-move="1" aria-label="Move down">↓</button>
+        </span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Section editor -->
+  <dialog id="secDlg" class="sheet small" aria-labelledby="secDlgTitle">
+    <form method="dialog" id="secForm" class="sheet-body" autocomplete="off">
+      <header class="sheet-head">
+        <h2 id="secDlgTitle">List</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="sheet-scroll">
+        <label class="field"><span>Name</span><input name="title" required maxlength="120"></label>
+        <div class="field">
+          <span>Whose list</span>
+          <div class="seg seg-wide" data-radio="owner">
+            <button type="button" data-val="p1">Person 1</button>
+            <button type="button" data-val="p2">Person 2</button>
+            <button type="button" data-val="both">Both</button>
+          </div>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>Priority</span>
+            <select name="priority">
+              <option value="">—</option>
+              <option>P0</option><option>P1</option><option>P2</option><option>P3</option>
+              <option>P4</option><option>P5</option><option>P6</option><option>P7</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Kind</span>
+            <select name="type">
+              <option value="project">Project</option>
+              <option value="tasks">To-do list</option>
+              <option value="meetings">Meetings / plans</option>
+              <option value="trip">Trip</option>
+            </select>
+          </label>
+        </div>
+        <label class="field"><span>Note</span><textarea name="note" rows="2" maxlength="500"></textarea></label>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger ghost" id="secDelete">Delete list</button>
+        <span class="move-btns" id="secMove">
+          <button type="button" class="icon-btn" data-move="-1" aria-label="Move up">↑</button>
+          <button type="button" class="icon-btn" data-move="1" aria-label="Move down">↓</button>
+        </span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="setDlg" class="sheet" aria-labelledby="setDlgTitle">
+    <form method="dialog" id="setForm" class="sheet-body" autocomplete="off">
+      <header class="sheet-head">
+        <h2 id="setDlgTitle">Sync &amp; settings</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="sheet-scroll">
+        <p class="sync-detail" id="syncDetail"></p>
+
+        <div class="field" id="meField">
+          <span>Who's using this device?</span>
+          <div class="seg seg-wide" data-radio="me">
+            <button type="button" data-val="p1">Person 1</button>
+            <button type="button" data-val="p2">Person 2</button>
+          </div>
+          <small class="hint">Shows up in the change history so you can see who changed what.</small>
+        </div>
+
+        <fieldset class="group" id="tripGroup">
+          <legend>Trip details</legend>
+          <div class="row2">
+            <label class="field"><span>Board name</span><input name="tripTitle" maxlength="80"></label>
+            <label class="field"><span>Home city</span><input name="tripHome" maxlength="60" placeholder="e.g. Tokyo"></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Departure</span><input type="date" name="tripDep"></label>
+            <label class="field"><span>Back home</span><input type="date" name="tripRet"></label>
+          </div>
+          <label class="field"><span>Departure note</span><input name="tripDepNote" maxlength="80" placeholder="flight · airport · time"></label>
+          <div class="btn-row"><button type="button" class="btn" id="saveTripBtn">Save trip details</button></div>
+        </fieldset>
+
+        <fieldset class="group" id="ghGroup">
+          <legend>GitHub connection</legend>
+          <div class="row2">
+            <label class="field"><span>Owner (username)</span><input name="owner" autocapitalize="off" spellcheck="false" placeholder="GitHub username"></label>
+            <label class="field"><span>Repository</span><input name="repo" autocapitalize="off" spellcheck="false" placeholder="trip-board"></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Branch</span><input name="branch" autocapitalize="off" spellcheck="false" placeholder="main"></label>
+            <label class="field"><span>Data file</span><input name="path" autocapitalize="off" spellcheck="false" placeholder="data/board.json"></label>
+          </div>
+          <label class="field">
+            <span>Access token</span>
+            <input name="token" type="password" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+            <small class="hint">Stays on this device only. A fine-grained token with <b>Contents: read &amp; write</b> on just this repository.</small>
+          </label>
+          <details class="adv">
+            <summary>Advanced</summary>
+            <label class="field"><span>API address</span><input name="apiBase" autocapitalize="off" spellcheck="false" placeholder="https://api.github.com"></label>
+            <small class="hint">Leave empty. Changing it asks for the token again.</small>
+          </details>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="connectBtn">Save &amp; connect</button>
+            <button type="button" class="btn ghost" id="disconnectBtn">Forget on this device</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="group" id="codeGroup">
+          <legend>Setup code</legend>
+          <p class="hint">On a connected phone, copy the code and AirDrop it to the other phone (it contains the token — if you send it in a chat, delete the message afterwards). On the new phone, paste it below.</p>
+          <div class="btn-row">
+            <button type="button" class="btn" id="copyCodeBtn">Copy setup code</button>
+          </div>
+          <label class="field">
+            <span>Paste a setup code</span>
+            <span class="with-btn">
+              <input name="code" autocapitalize="off" spellcheck="false" placeholder="TB1.…">
+              <button type="button" class="btn" id="useCodeBtn">Use</button>
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Data</legend>
+          <div class="btn-row">
+            <a class="btn" id="historyLink" target="_blank" rel="noopener noreferrer" hidden>Change history ↗</a>
+            <button type="button" class="btn" id="exportBtn">Download backup</button>
+            <label class="btn file-btn">Restore from file…<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+          </div>
+        </fieldset>
+      </div>
+      <footer class="sheet-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Done</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <button type="button" id="fab" class="fab" aria-label="Add something" hidden>+</button>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
