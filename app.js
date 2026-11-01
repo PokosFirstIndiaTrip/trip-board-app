@@ -126,6 +126,21 @@
     };
   }
 
+  // Still the board emptyDoc() started with: nothing anyone typed is in it.
+  function untouched(doc) {
+    const d = normalize(clone(doc));
+    const e = emptyDoc();
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return (
+      !d.items.length &&
+      !Object.keys(d.dayLabels).length &&
+      ['home', 'departure', 'departureNote', 'returnDate'].every((k) => !d[k]) &&
+      (d.title || e.title) === e.title &&
+      same(d.people, e.people) &&
+      same(d.sections, e.sections)
+    );
+  }
+
   const hashStr = (s) => {
     let h = 0;
     for (const ch of s) h = (h * 31 + ch.codePointAt(0)) >>> 0;
@@ -629,7 +644,7 @@
     let html = '';
     if (storageBroken) {
       html = `<span>This browser isn’t letting the board save on the phone (private tab or blocked storage). Open it from the Home Screen icon or a normal Safari tab.</span>`;
-    } else if (m === 'local') {
+    } else if (m === 'local' && !S.invite) {
       html = `<span>Changes are saved on this device only.</span><button type="button" class="btn" data-act="open-settings">Connect GitHub to share</button>`;
     } else if (m === 'remote' && S.sync.err && ['auth', 'perm', 'notfound', 'badjson'].includes(S.sync.err.kind)) {
       html = `<span>${esc(S.sync.err.msg)}</span><button type="button" class="btn" data-act="open-settings">Open settings</button>`;
@@ -753,23 +768,25 @@
     deferredRender = false;
     const m = mode();
     const d = S.view;
+    // An invite link opened on a phone that still has a board saved only on it: ask for the PIN first.
+    const w = m === 'none' || (m === 'local' && !!S.invite);
     document.body.dataset.tab = S.ui.tab;
-    $('#welcome').hidden = m !== 'none';
-    $('#layout').hidden = m === 'none';
-    $('.tabs').hidden = m === 'none';
-    $('#whoFilter').hidden = m === 'none';
-    $('#addBtn').hidden = m === 'none';
-    $('#fab').hidden = m === 'none';
+    $('#welcome').hidden = !w;
+    $('#layout').hidden = w;
+    $('.tabs').hidden = w;
+    $('#whoFilter').hidden = w;
+    $('#addBtn').hidden = w;
+    $('#fab').hidden = w;
     labelPeople();
-    $('#boardTitle').textContent = m === 'none' ? 'Trip Board' : d.title || 'Trip Board';
-    document.title = m === 'none' ? 'Trip Board' : d.title || 'Trip Board';
-    $('#countdown').innerHTML = m === 'none' ? '' : countdownHTML(d);
+    $('#boardTitle').textContent = w ? 'Trip Board' : d.title || 'Trip Board';
+    document.title = w ? 'Trip Board' : d.title || 'Trip Board';
+    $('#countdown').innerHTML = w ? '' : countdownHTML(d);
     $$('#whoFilter [data-who]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.who === S.ui.who)));
     $$('.tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === S.ui.tab)));
     const tbcN = d.items.filter((i) => i.tbc && !i.done && visible(i)).length;
     $('#tabBadge').textContent = tbcN;
     $('#tabBadge').hidden = !tbcN;
-    if (m === 'none') {
+    if (w) {
       renderWelcome();
       setSync();
       return;
@@ -1671,7 +1688,7 @@
       else if (S.sync.lastOk) html += ` Last synced ${esc(relTime(S.sync.lastOk))}.`;
       if (S.pending.length) html += ` ${S.pending.length} change${S.pending.length > 1 ? 's' : ''} waiting to be saved.`;
     } else if (m === 'local') html = 'Saved on this device only. Connect below to share it — what you added here will be offered to the shared board.';
-    else html = 'Not connected yet. Paste a setup code from the other phone, or connect with an access token.';
+    else html = 'Not connected yet. Open the invite link from the other phone, or connect with an access token.';
     if (m !== 'none' && !me()) html += ' <br><b>Tap your name below</b> so changes show who made them.';
     el.innerHTML = html;
   }
@@ -1714,7 +1731,7 @@
   async function connectWith(next) {
     const detail = $('#syncDetail');
     if (!next.owner || !next.repo || !next.token) {
-      detail.innerHTML = '<b>Fill in owner, repository and access token (or paste a setup code).</b>';
+      detail.innerHTML = '<b>Fill in owner, repository and access token.</b>';
       return;
     }
     if (!okApiBase(next.apiBase)) {
@@ -1994,6 +2011,7 @@
       if (mode() === 'local' && !confirm(`Replace the board on this device with “${file.name}”?`)) return;
       S.base = { local: true, doc: normalize(doc) };
       S.pending = [];
+      S.invite = null; // they chose this board over the invite's PIN screen
       persist();
       setDlg.close();
       refresh();
@@ -2108,12 +2126,6 @@
       case 'open-settings':
         openSettings();
         break;
-      case 'start-local':
-        S.base = { local: true, doc: emptyDoc() };
-        S.pending = [];
-        persist();
-        refresh();
-        break;
     }
   });
 
@@ -2186,6 +2198,8 @@
   // ---------- another tab on this device ----------
   window.addEventListener('storage', (e) => {
     if (e.key === KEY.pending) {
+      // No board here to apply them to; persisting would wipe the other tab's board on this device.
+      if (!connected() && !S.base) return;
       const theirs = parseJSON(e.newValue) || [];
       const have = new Set(S.pending.map((o) => o.u));
       const extra = Array.isArray(theirs) ? theirs.filter((o) => o && o.u && !have.has(o.u)) : [];
@@ -2248,6 +2262,12 @@
   }
 
   // ---------- start ----------
+  // "This device only" is no longer offered. A board left untouched from trying it would hide the welcome screen.
+  if (!connected() && S.base && S.base.local && untouched(applyAll(S.base.doc, S.pending))) {
+    S.base = null;
+    S.pending = [];
+    persist();
+  }
   refresh();
   if (connected()) {
     (S.pending.length ? save() : pull(true)).then(() => offerCarry());
