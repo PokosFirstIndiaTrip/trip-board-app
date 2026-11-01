@@ -441,6 +441,9 @@ dialog.sheet::backdrop { background: rgba(15, 12, 8, .38); }
 .need-me .seg { box-shadow: 0 0 0 2px var(--warn); }
 .sync-detail { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; color: var(--ink-2); }
 .sync-detail b { color: var(--ink); }
+.connect-msg { margin: 10px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.connect-msg.bad { color: var(--danger); }
+.field input[aria-invalid="true"] { border-color: var(--danger); }
 
 /* ---------- Toast ---------- */
 .toast {

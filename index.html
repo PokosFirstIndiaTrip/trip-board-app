@@ -244,7 +244,7 @@
           <legend>GitHub connection</legend>
           <div class="row2">
             <label class="field"><span>Owner (username)</span><input name="owner" autocapitalize="off" spellcheck="false" placeholder="GitHub username"></label>
-            <label class="field"><span>Repository</span><input name="repo" autocapitalize="off" spellcheck="false" placeholder="trip-board"></label>
+            <label class="field"><span>Repository</span><input name="repo" autocapitalize="off" spellcheck="false" placeholder="e.g. trip-board"></label>
           </div>
           <div class="row2">
             <label class="field"><span>Branch</span><input name="branch" autocapitalize="off" spellcheck="false" placeholder="main"></label>
@@ -264,6 +264,7 @@
             <button type="button" class="btn primary" id="connectBtn">Save &amp; connect</button>
             <button type="button" class="btn ghost" id="disconnectBtn">Forget on this device</button>
           </div>
+          <p class="connect-msg" id="connectMsg" role="status" aria-live="polite" hidden></p>
         </fieldset>
 
         <fieldset class="group" id="inviteGroup">

@@ -1651,6 +1651,8 @@
     setForm.elements.token.value = '';
     setForm.elements.token.placeholder = c.token ? '•••••••• saved — leave empty to keep' : 'github_pat_…';
     setForm.elements.apiBase.value = c.apiBase || '';
+    for (const el of $$('[aria-invalid]', setForm)) el.removeAttribute('aria-invalid');
+    $('#connectMsg').hidden = true;
     setForm.elements.invitePin.value = '';
     setForm.elements.inviteLink.value = '';
     $('#inviteOut').hidden = true;
@@ -1728,15 +1730,27 @@
     LS.del(KEY.carry);
   }
 
+  // Also shown under "Save & connect": on a phone the top of the sheet is usually scrolled out of view.
+  function connectNote(html, bad) {
+    $('#syncDetail').innerHTML = html;
+    const el = $('#connectMsg');
+    el.innerHTML = html;
+    el.classList.toggle('bad', !!bad);
+    el.hidden = !html;
+  }
+
   async function connectWith(next) {
-    const detail = $('#syncDetail');
-    if (!next.owner || !next.repo || !next.token) {
-      detail.innerHTML = '<b>Fill in owner, repository and access token.</b>';
-      return;
+    for (const el of $$('[aria-invalid]', setForm)) el.removeAttribute('aria-invalid');
+    const missing = [['owner', 'owner'], ['repo', 'repository'], ['token', 'access token']].filter(([k]) => !next[k]);
+    if (missing.length) {
+      for (const [k] of missing) setForm.elements[k].setAttribute('aria-invalid', 'true');
+      if (setDlg.open) setForm.elements[missing[0][0]].focus();
+      connectNote(`<b>Fill in the ${missing.map(([, label]) => label).join(' and ')}.</b>`, true);
+      return 'Fill in owner, repository and access token.';
     }
     if (!okApiBase(next.apiBase)) {
-      detail.innerHTML = '<b>The API address must start with https://</b>';
-      return;
+      connectNote('<b>The API address must start with https://</b>', true);
+      return 'The API address must start with https://';
     }
     const same = connected() && targetKey(next) === targetKey(S.cfg);
     if (connected() && !same && S.pending.length && !confirm(`${S.pending.length} change(s) haven’t reached ${S.cfg.owner}/${S.cfg.repo} yet and will be dropped if you switch. Switch anyway?`)) return;
@@ -1751,8 +1765,8 @@
       S.base = null;
       S.pending = [];
     }
-    detail.textContent = 'Connecting…';
     refresh();
+    connectNote('Connecting…');
     await pull(true);
     let err = S.sync.err;
     if (err && err.kind === 'notfound' && (await gh.repoExists())) {
@@ -1785,17 +1799,21 @@
       LS.set(KEY.cfg, S.cfg);
       persist();
       refresh();
-      if (setDlg.open) openSettings();
-      $('#syncDetail').innerHTML = `<b>Couldn’t connect:</b> ${esc(why)}${prev.base && prev.base.local ? '<br>Your board on this device is untouched.' : ''}`;
+      // The form keeps what was typed, so a typo can be fixed without entering everything again.
+      connectNote(`<b>Couldn’t connect:</b> ${esc(why)}${prev.base && prev.base.local ? '<br>Your board on this device is untouched.' : ''}`, true);
       if (connected()) pull(true);
       return why;
     }
     persist();
     refresh();
     offerCarry();
-    if (setDlg.open) openSettings();
-    if (me()) toast('Connected ✓');
-    else openWho();
+    // A toast would sit behind the open sheet, so say it under the button instead.
+    if (setDlg.open) {
+      openSettings();
+      connectNote(`Connected to <b>${esc(S.cfg.owner)}/${esc(S.cfg.repo)}</b> ✓`);
+    }
+    if (!me()) openWho();
+    else if (!setDlg.open) toast('Connected ✓');
     return true;
   }
 
@@ -1916,12 +1934,18 @@
     const apiBase = v('apiBase').replace(/\/+$/, '');
     // A saved token is only reused for the same API address.
     const keepToken = (apiBase || '') === (S.cfg.apiBase || '');
+    // Also accept a pasted github.com address, or "owner/repo" typed into either box.
+    const parts = (s) => s.replace(/[?#].*$/, '').replace(/^(https?:\/\/)?(www\.)?github\.com\//i, '').split('/').filter(Boolean);
+    const o = parts(v('owner'));
+    const r = parts(v('repo'));
+    // A box that names both wins over the other box; Owner first if both do.
+    const full = o.length > 1 ? o : r.length > 1 ? r : null;
     return Object.assign({}, S.cfg, {
-      owner: v('owner'),
-      repo: v('repo'),
+      owner: full ? full[0] : o[0] || '',
+      repo: (full ? full[1] : r[0] || '').replace(/\.git$/i, ''),
       branch: v('branch') || 'main',
       path: v('path').replace(/^\/+/, '') || DEFAULT_PATH,
-      token: v('token') || (keepToken ? S.cfg.token || '' : ''),
+      token: v('token').replace(/\s+/g, '') || (keepToken ? S.cfg.token || '' : ''),
       apiBase,
     });
   }
@@ -1937,7 +1961,21 @@
       renderSyncDetail();
     }
   });
-  $('#connectBtn').addEventListener('click', () => connectWith(readSettings()));
+  setForm.addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
+  $('#connectBtn').addEventListener('click', async () => {
+    const btn = $('#connectBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+    try {
+      const res = await connectWith(readSettings());
+      // The sheet was closed while connecting, so the note under the button can't be seen.
+      if (res !== true && res && !setDlg.open) toast(`Couldn’t connect: ${res}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save & connect';
+    }
+  });
   $('#makeInviteBtn').addEventListener('click', async () => {
     if (!connected()) return;
     const pin = setForm.elements.invitePin.value.trim();
