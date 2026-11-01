@@ -266,19 +266,17 @@
           </div>
         </fieldset>
 
-        <fieldset class="group" id="codeGroup">
-          <legend>Setup code</legend>
-          <p class="hint">On a connected phone, copy the code and AirDrop it to the other phone (it contains the token — if you send it in a chat, delete the message afterwards). On the new phone, paste it below.</p>
-          <div class="btn-row">
-            <button type="button" class="btn" id="copyCodeBtn">Copy setup code</button>
+        <fieldset class="group" id="inviteGroup">
+          <legend>Invite the other phone</legend>
+          <p class="hint">Choose a PIN and create a link. Send the link (e.g. on WhatsApp) and tell the PIN separately — the link is useless without it. On the other phone: tap the link, type the PIN once.</p>
+          <div class="with-btn">
+            <input name="invitePin" type="text" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="PIN, at least 6 digits" aria-label="PIN for the invite">
+            <button type="button" class="btn primary" id="makeInviteBtn">Create link</button>
           </div>
-          <label class="field">
-            <span>Paste a setup code</span>
-            <span class="with-btn">
-              <input name="code" autocapitalize="off" spellcheck="false" placeholder="TB1.…">
-              <button type="button" class="btn" id="useCodeBtn">Use</button>
-            </span>
-          </label>
+          <div class="with-btn" id="inviteOut" hidden>
+            <input name="inviteLink" type="text" readonly aria-label="Invite link">
+            <button type="button" class="btn" id="copyInviteBtn">Copy</button>
+          </div>
         </fieldset>
 
         <fieldset class="group">
@@ -298,6 +296,20 @@
   </dialog>
 
   <button type="button" id="fab" class="fab" aria-label="Add something" hidden>+</button>
+  <!-- Who's using this phone (asked once after opening an invite) -->
+  <dialog id="whoDlg" class="sheet small" aria-labelledby="whoDlgTitle">
+    <div class="sheet-body">
+      <header class="sheet-head"><h2 id="whoDlgTitle">Who's using this phone?</h2></header>
+      <div class="sheet-scroll">
+        <p class="hint">So ticks and changes show your name.</p>
+        <div class="who-pick">
+          <button type="button" class="btn big" data-me="p1">Person 1</button>
+          <button type="button" class="btn big" data-me="p2">Person 2</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="app.js"></script>

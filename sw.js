@@ -1,6 +1,6 @@
 // Network-first cache of the app shell so the board still opens offline (on the plane).
 // Only same-origin GETs are handled; GitHub API calls go straight to the network.
-const CACHE = 'trip-board-v1';
+const CACHE = 'trip-board-v2';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest', './icon.svg', './icon-180.png'];
 
 self.addEventListener('install', (e) => {

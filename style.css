@@ -438,7 +438,6 @@ dialog.sheet::backdrop { background: rgba(15, 12, 8, .38); }
 .adv .field { margin-top: 8px; }
 .file-btn { cursor: pointer; }
 .sheet-scroll > .sync-detail { order: -3; }
-.not-connected #codeGroup { order: -2; }
 .need-me .seg { box-shadow: 0 0 0 2px var(--warn); }
 .sync-detail { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; color: var(--ink-2); }
 .sync-detail b { color: var(--ink); }
@@ -452,6 +451,16 @@ dialog.sheet::backdrop { background: rgba(15, 12, 8, .38); }
 .toast button { border: 0; background: transparent; color: var(--toast-accent); font-weight: 700; padding: 6px 10px; border-radius: 6px; font-size: 15px; }
 
 /* ---------- Welcome ---------- */
+.pin-form { display: flex; gap: 8px; margin: 4px 0 8px; }
+.pin-form input {
+  flex: 1; min-width: 0; border: 1px solid var(--line-2); background: var(--surface-2); border-radius: 10px;
+  padding: 10px 12px; font-size: 17px; min-height: 46px;
+}
+.pin-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
+.pin-form .btn { min-height: 46px; }
+.who-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-bottom: 8px; }
+.btn.big { min-height: 64px; font-size: 18px; }
+.with-btn input { flex: 1; min-width: 0; border: 1px solid var(--line-2); background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: 16px; min-height: 40px; }
 .welcome { max-width: 620px; margin: 28px auto; padding: 0 16px; }
 .welcome .card { padding: 20px; }
 .welcome h2 { margin: 0 0 6px; font-size: 20px; }

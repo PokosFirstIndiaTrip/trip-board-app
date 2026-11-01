@@ -1151,14 +1151,27 @@
   }
 
   function renderWelcome() {
-    $('#welcome').innerHTML = `<div class="card">
+    if ($('#welcome').dataset.mode === (S.invite ? 'pin' : 'link')) return; // keep what's being typed
+    $('#welcome').dataset.mode = S.invite ? 'pin' : 'link';
+    $('#welcome').innerHTML = S.invite
+      ? `<div class="card">
       <h2>Trip Board</h2>
-      <p>A shared checklist and schedule. Everything is kept in one file in your private GitHub repository, so both phones always see the same list — and every change is saved in its history.</p>
-      <div class="btn-row">
-        <button type="button" class="btn primary" data-act="open-code">I have a setup code</button>
-        <button type="button" class="btn" data-act="open-settings">Connect with a token…</button>
-      </div>
-      <p class="hint" style="margin-top:14px">Or <button type="button" class="link-btn" data-act="start-local">try it on this device only</button> — you can connect later and keep what you added.</p>
+      <p>Enter the PIN you were given to open the shared checklist and schedule. You only need it once on this phone.</p>
+      <form class="pin-form" data-form="pin">
+        <input name="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN" required>
+        <button type="submit" class="btn primary">Open the board</button>
+      </form>
+      <p class="hint" data-msg></p>
+    </div>`
+      : `<div class="card">
+      <h2>Trip Board</h2>
+      <p>A shared checklist and schedule. Open the <b>invite link</b> you were sent — it brings you straight here — or paste it below.</p>
+      <form class="pin-form" data-form="link">
+        <input name="link" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste the invite link" aria-label="Invite link" required>
+        <button type="submit" class="btn primary">Next</button>
+      </form>
+      <p class="hint" data-msg></p>
+      <p class="hint" style="margin-top:14px">Setting up the board? <button type="button" class="link-btn" data-act="open-settings">Connect with your GitHub token</button></p>
     </div>`;
   }
 
@@ -1610,11 +1623,10 @@
   const setDlg = $('#setDlg');
   const setForm = $('#setForm');
 
-  function openSettings(focusCode) {
+  function openSettings() {
     const c = S.cfg;
     const m = mode();
     labelPeople();
-    setForm.classList.toggle('not-connected', m !== 'remote');
     setForm.elements.owner.value = c.owner || '';
     setForm.elements.repo.value = c.repo || '';
     setForm.elements.branch.value = c.branch || 'main';
@@ -1622,7 +1634,9 @@
     setForm.elements.token.value = '';
     setForm.elements.token.placeholder = c.token ? '•••••••• saved — leave empty to keep' : 'github_pat_…';
     setForm.elements.apiBase.value = c.apiBase || '';
-    setForm.elements.code.value = '';
+    setForm.elements.invitePin.value = '';
+    setForm.elements.inviteLink.value = '';
+    $('#inviteOut').hidden = true;
     setRadio(setForm, 'me', me() || '');
     $('#meField').hidden = m === 'none';
     $('#meField').classList.toggle('need-me', m !== 'none' && !me());
@@ -1635,14 +1649,10 @@
     setForm.elements.tripRet.value = d.returnDate || '';
     $('#disconnectBtn').hidden = m === 'none';
     $('#disconnectBtn').textContent = m === 'local' ? 'Delete this board…' : 'Forget on this device';
-    $('#copyCodeBtn').disabled = !connected();
+    $('#inviteGroup').hidden = !connected();
     $('#exportBtn').disabled = m === 'none';
     renderSyncDetail();
     if (!setDlg.open) setDlg.showModal();
-    if (focusCode) {
-      setForm.elements.code.scrollIntoView({ block: 'center' });
-      setForm.elements.code.focus();
-    }
   }
 
   function renderSyncDetail() {
@@ -1761,15 +1771,128 @@
       if (setDlg.open) openSettings();
       $('#syncDetail').innerHTML = `<b>Couldn’t connect:</b> ${esc(why)}${prev.base && prev.base.local ? '<br>Your board on this device is untouched.' : ''}`;
       if (connected()) pull(true);
-      return;
+      return why;
     }
     persist();
     refresh();
     offerCarry();
     if (setDlg.open) openSettings();
-    toast(me() ? 'Connected ✓' : 'Connected ✓ — now tap your name');
+    if (me()) toast('Connected ✓');
+    else openWho();
     return true;
   }
+
+  // ---------- invite link + PIN ----------
+  // The link carries owner/repo/token encrypted with a key derived from the PIN, so the
+  // link alone is useless if it's forwarded or seen. It sits after '#', which browsers
+  // never send to any server.
+  const INVITE_ITER = 600000;
+  const bytesToB64url = (u8) => {
+    let s = '';
+    for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+  const b64urlToBytes = (s) => {
+    let b = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    const bin = atob(b);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  async function pinKey(pin, salt) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: INVITE_ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  const isLocalApi = (u) => /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(u || '');
+  async function makeInvite(pin) {
+    const c = S.cfg;
+    const payload = { o: c.owner, r: c.repo, t: c.token };
+    if ((c.branch || 'main') !== 'main') payload.b = c.branch;
+    if ((c.path || DEFAULT_PATH) !== DEFAULT_PATH) payload.p = c.path;
+    if (isLocalApi(c.apiBase)) payload.a = c.apiBase; // only for local testing
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pinKey(pin, salt), new TextEncoder().encode(JSON.stringify(payload))));
+    const blob = new Uint8Array(1 + salt.length + iv.length + ct.length);
+    blob[0] = 1;
+    blob.set(salt, 1);
+    blob.set(iv, 17);
+    blob.set(ct, 29);
+    return `${location.origin}${location.pathname}#j=${bytesToB64url(blob)}`;
+  }
+  async function openInvite(code, pin) {
+    const blob = b64urlToBytes(code);
+    if (blob[0] !== 1 || blob.length < 40) throw new Error('bad link');
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: blob.slice(17, 29) }, await pinKey(pin, blob.slice(1, 17)), blob.slice(29));
+    const o = JSON.parse(new TextDecoder().decode(plain));
+    // An API address is only honoured for local testing, so a link can't send the token elsewhere.
+    return { owner: String(o.o || ''), repo: String(o.r || ''), branch: String(o.b || 'main'), path: String(o.p || DEFAULT_PATH), token: String(o.t || ''), apiBase: isLocalApi(o.a) ? o.a : '' };
+  }
+  const inviteFrom = (s) => {
+    const m = /#j=([A-Za-z0-9_-]{40,})/.exec(String(s || ''));
+    return m ? m[1] : null;
+  };
+  S.invite = connected() ? null : inviteFrom(location.hash);
+
+  async function submitPin(form) {
+    const msg = $('[data-msg]', form.parentNode);
+    const btn = $('button', form);
+    const pin = form.elements.pin.value.trim();
+    if (!pin) return;
+    if (!window.crypto || !crypto.subtle) {
+      msg.textContent = 'This browser can’t open invite links. Try Safari or Chrome.';
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = 'Opening…';
+    let cfg;
+    try {
+      cfg = await openInvite(S.invite, pin);
+    } catch {
+      btn.disabled = false;
+      msg.textContent = 'That PIN doesn’t match this link. Try again.';
+      return;
+    }
+    const res = await connectWith(Object.assign({}, S.cfg, cfg));
+    btn.disabled = false;
+    if (res !== true) msg.textContent = `Couldn’t open the board: ${res}`;
+  }
+
+  document.addEventListener('submit', (e) => {
+    const f = e.target.closest('#welcome form');
+    if (!f) return;
+    e.preventDefault();
+    if (f.dataset.form === 'pin') submitPin(f);
+    else {
+      const code = inviteFrom(f.elements.link.value);
+      if (!code) {
+        $('[data-msg]', f.parentNode).textContent = 'That doesn’t look like an invite link — it should end with #j=…';
+        return;
+      }
+      S.invite = code;
+      render();
+      const pin = $('#welcome input[name="pin"]');
+      if (pin) pin.focus();
+    }
+  });
+
+  // ---------- who's using this phone ----------
+  const whoDlg = $('#whoDlg');
+  function openWho() {
+    $$('[data-me]', whoDlg).forEach((b) => (b.textContent = nm(b.dataset.me)));
+    if (!whoDlg.open) whoDlg.showModal();
+  }
+  whoDlg.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-me]');
+    if (!b) return;
+    S.cfg = Object.assign({}, S.cfg, { me: b.dataset.me });
+    LS.set(KEY.cfg, S.cfg);
+    whoDlg.close();
+    refresh();
+    toast(`Hi ${nm(b.dataset.me)} — you’re all set`);
+  });
+  whoDlg.addEventListener('cancel', (e) => e.preventDefault());
 
   function readSettings() {
     const v = (n) => setForm.elements[n].value.trim();
@@ -1786,21 +1909,6 @@
     });
   }
 
-  const b64url = (s) => b64encode(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  function makeCode() {
-    const c = S.cfg;
-    return 'TB1.' + b64url(JSON.stringify({ o: c.owner, r: c.repo, b: c.branch || 'main', p: c.path || DEFAULT_PATH, t: c.token }));
-  }
-  function parseCode(s) {
-    s = s.trim();
-    if (!s.startsWith('TB1.')) throw new Error('That doesn’t look like a setup code (it starts with TB1.)');
-    let b = s.slice(4).replace(/-/g, '+').replace(/_/g, '/');
-    while (b.length % 4) b += '=';
-    const o = JSON.parse(b64decode(b));
-    // The API address is never taken from a code, so a code can't send the token elsewhere.
-    return { owner: String(o.o || ''), repo: String(o.r || ''), branch: String(o.b || 'main'), path: String(o.p || DEFAULT_PATH), token: String(o.t || ''), apiBase: '' };
-  }
-
   setForm.addEventListener('submit', (e) => e.preventDefault());
   setForm.addEventListener('click', (e) => {
     const r = e.target.closest('[data-radio="me"] button');
@@ -1813,31 +1921,29 @@
     }
   });
   $('#connectBtn').addEventListener('click', () => connectWith(readSettings()));
-  $('#useCodeBtn').addEventListener('click', async () => {
-    const input = setForm.elements.code;
-    let c;
-    try {
-      c = parseCode(input.value);
-    } catch (e) {
-      $('#syncDetail').innerHTML = `<b>${esc(e.message || 'Couldn’t read that code.')}</b>`;
-      return;
-    }
-    input.value = '';
-    try {
-      navigator.clipboard.writeText('').catch(() => {});
-    } catch {}
-    if (await connectWith(Object.assign({}, S.cfg, c))) toast('Connected ✓ — now delete the message with the code');
-  });
-  $('#copyCodeBtn').addEventListener('click', async () => {
+  $('#makeInviteBtn').addEventListener('click', async () => {
     if (!connected()) return;
-    const code = makeCode();
+    const pin = setForm.elements.invitePin.value.trim();
+    if (pin.length < 6) return toast('Pick a PIN of at least 6 digits');
+    $('#makeInviteBtn').disabled = true;
     try {
-      await navigator.clipboard.writeText(code);
-      toast('Setup code copied — AirDrop it, or delete the message after sending');
+      setForm.elements.inviteLink.value = await makeInvite(pin);
+      $('#inviteOut').hidden = false;
     } catch {
-      setForm.elements.code.value = code;
-      setForm.elements.code.select();
-      toast('Copy the code from the box below');
+      toast('Couldn’t make the link in this browser');
+    } finally {
+      $('#makeInviteBtn').disabled = false;
+    }
+  });
+  $('#copyInviteBtn').addEventListener('click', async () => {
+    const link = setForm.elements.inviteLink.value;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('Invite link copied — send it, and tell the PIN separately');
+    } catch {
+      setForm.elements.inviteLink.select();
+      toast('Select the link and copy it');
     }
   });
   $('#saveTripBtn').addEventListener('click', () => {
@@ -2001,9 +2107,6 @@
         break;
       case 'open-settings':
         openSettings();
-        break;
-      case 'open-code':
-        openSettings(true);
         break;
       case 'start-local':
         S.base = { local: true, doc: emptyDoc() };
